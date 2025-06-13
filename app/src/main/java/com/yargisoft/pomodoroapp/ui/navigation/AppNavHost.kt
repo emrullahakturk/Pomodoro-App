@@ -8,6 +8,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.yargisoft.pomodoroapp.ui.home.HomeScreen
+import com.yargisoft.pomodoroapp.ui.settings.SettingsScreen
 
 // Uygulamanın navigasyon grafiğini tanımlayan Composable fonksiyon.
 @Composable
@@ -24,6 +25,10 @@ fun AppNavHost(
         // "home_screen" rotasına ulaşıldığında HomeScreen Composable'ını göster.
         composable(Screen.Home.route) {
             HomeScreen(navController = navController) // HomeScreen'e navController'ı iletelim
+        }
+
+        composable(Screen.Settings.route) { // Yeni ayarlar ekranı rotası
+            SettingsScreen(navController = navController)
         }
 
         // İleride eklenecek diğer ekranlar için:

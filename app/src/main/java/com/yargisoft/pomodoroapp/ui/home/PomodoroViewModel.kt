@@ -1,7 +1,10 @@
 package com.yargisoft.pomodoroapp.ui.home
 
+import android.app.Application
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.yargisoft.pomodoroapp.data.SettingsManager // SettingsManager'ı import etmeyi unutma
+import com.yargisoft.pomodoroapp.util.NotificationHelper
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -24,13 +27,27 @@ enum class PomodoroState {
 // Constructor'a @Inject ekleyerek Hilt'in bağımlılıkları sağlamasını sağlıyoruz.
 @HiltViewModel
 class PomodoroViewModel @Inject constructor(
-    // İleride bağımlılıklar eklemek istersek buraya ekleyeceğiz (örneğin Ayarlar Yöneticisi)
+    private val application: Application, // Application context'ini enjekte et
+    private val settingsManager: SettingsManager // SettingsManager'ı buraya enjekte ediyoruz
 ) : ViewModel() {
+
+    // Ayarlardan okunan ve UI'a aktarılan ilk süreler
+    // Bunları public yapıyoruz ki HomeScreen'deki TimerDisplay kullanabilsin.
+    var initialWorkTimeMillis: Long = SettingsManager.DEFAULT_WORK_TIME_MINUTES * 60 * 1000L
+        private set // Dışarıdan sadece okunabilir
+
+    var initialShortBreakTimeMillis: Long = SettingsManager.DEFAULT_SHORT_BREAK_TIME_MINUTES * 60 * 1000L
+        private set
+
+    var initialLongBreakTimeMillis: Long = SettingsManager.DEFAULT_LONG_BREAK_TIME_MINUTES * 60 * 1000L
+        private set
+
+    private var currentLongBreakInterval: Int = SettingsManager.DEFAULT_LONG_BREAK_INTERVAL
 
     // --- StateFlow'lar (UI'ın gözlemleyeceği veriler) ---
 
     // Geri sayım için kalan süreyi tutar (milisaniye cinsinden).
-    private val _timeMillis = MutableStateFlow(DEFAULT_WORK_TIME_MILLIS)
+    private val _timeMillis = MutableStateFlow(initialWorkTimeMillis) // Başlangıç süresini buradan al
     val timeMillis: StateFlow<Long> = _timeMillis.asStateFlow()
 
     // Pomodoro'nun mevcut durumunu tutar (WORKING, SHORT_BREAK, vb.).
@@ -46,6 +63,35 @@ class PomodoroViewModel @Inject constructor(
     private var timerJob: Job? = null // Zamanlayıcı coroutine'ini tutar
     private var isPaused = false // Zamanlayıcının duraklatılıp duraklatılmadığını kontrol eder
 
+    // ViewModel başlatıldığında ayarları yükle
+    init {
+        viewModelScope.launch {
+            settingsManager.workTimeMinutes.collect { minutes ->
+                initialWorkTimeMillis = minutes * 60 * 1000L
+                // Eğer zamanlayıcı durmuşsa (başlangıç durumunda), başlangıç süresini güncelle
+                if (_pomodoroState.value == PomodoroState.STOPPED) {
+                    _timeMillis.value = initialWorkTimeMillis
+                }
+            }
+        }
+        viewModelScope.launch {
+            settingsManager.shortBreakTimeMinutes.collect { minutes ->
+                initialShortBreakTimeMillis = minutes * 60 * 1000L
+            }
+        }
+        viewModelScope.launch {
+            settingsManager.longBreakTimeMinutes.collect { minutes ->
+                initialLongBreakTimeMillis = minutes * 60 * 1000L
+            }
+        }
+        viewModelScope.launch {
+            settingsManager.longBreakInterval.collect { interval ->
+                currentLongBreakInterval = interval
+            }
+        }
+    }
+
+
     // --- Zamanlayıcı Başlatma Fonksiyonları ---
 
     fun startTimer() {
@@ -55,14 +101,23 @@ class PomodoroViewModel @Inject constructor(
 
         // Mevcut duruma göre zamanlayıcıyı başlat
         when (_pomodoroState.value) {
-            PomodoroState.STOPPED, PomodoroState.PAUSED -> {
-                // Eğer durdurulmuş veya duraklatılmışsa, mevcut süreden devam et
+            PomodoroState.STOPPED -> {
+                // Eğer durdurulmuşsa, çalışma süresini başlangıç ayarlarına göre başlat
+                _timeMillis.value = initialWorkTimeMillis
                 startCountdown(_timeMillis.value)
-                _pomodoroState.value = PomodoroState.WORKING // Başlangıçta çalışma modunda
+                _pomodoroState.value = PomodoroState.WORKING
             }
-            PomodoroState.WORKING -> startCountdown(_timeMillis.value)
-            PomodoroState.SHORT_BREAK -> startCountdown(_timeMillis.value)
-            PomodoroState.LONG_BREAK -> startCountdown(_timeMillis.value)
+            PomodoroState.PAUSED -> {
+                // Duraklatılmışsa, mevcut süreden devam et
+                startCountdown(_timeMillis.value)
+                // Duraklatıldığı durumdan hangi modda devam ettiğini koru
+                // _pomodoroState.value = _pomodoroState.value // Zaten mevcut değeri koruyor, bu satıra gerek yok.
+            }
+            // WORKING, SHORT_BREAK, LONG_BREAK durumlarında zaten süre devam ediyor demektir.
+            // Bu durumlarda sadece _timeMillis'in mevcut değerinden devam et.
+            PomodoroState.WORKING, PomodoroState.SHORT_BREAK, PomodoroState.LONG_BREAK -> {
+                startCountdown(_timeMillis.value)
+            }
         }
     }
 
@@ -71,15 +126,34 @@ class PomodoroViewModel @Inject constructor(
         _timeMillis.value = initialTime // Başlangıç süresini ayarla
 
         timerJob = viewModelScope.launch {
-            _pomodoroState.value = PomodoroState.WORKING // Varsayılan olarak çalışma durumu
+            // Eğer durdurulmuş veya duraklatılmış bir durumdan başlatılıyorsa, durumu ayarla.
+            // Aksi takdirde, mevcut durumu (çalışma/mola) koru.
+            if (_pomodoroState.value == PomodoroState.STOPPED || _pomodoroState.value == PomodoroState.PAUSED) {
+                _pomodoroState.value = PomodoroState.WORKING // Varsayılan olarak çalışma durumu
+            }
+
             while (_timeMillis.value > 0 && !isPaused) {
                 delay(1000) // Her saniye bekle
                 _timeMillis.value -= 1000 // Süreyi azalt
             }
 
             if (_timeMillis.value <= 0) {
-                // Süre bittiğinde durumu değiştir
                 handleTimerEnd()
+                // Süre bittiğinde bildirim gönder!
+                val notificationTitle = when (_pomodoroState.value) {
+                    PomodoroState.WORKING -> "Mola Zamanı!"
+                    PomodoroState.SHORT_BREAK -> "Çalışma Zamanı!"
+                    PomodoroState.LONG_BREAK -> "Çalışma Zamanı!"
+                    else -> "Pomodoro Tamamlandı!"
+                }
+                // Bildirim mesajını güncel ayarlara göre dinamikleştir
+                val notificationMessage = when (_pomodoroState.value) {
+                    PomodoroState.WORKING -> "Kısa bir mola verelim. ${initialShortBreakTimeMillis / (60 * 1000)} dakikalık molana başla."
+                    PomodoroState.SHORT_BREAK -> "Mola bitti. Yeni bir Pomodoro turuna başla!"
+                    PomodoroState.LONG_BREAK -> "Uzun molan bitti. Yeni bir Pomodoro turuna başla!"
+                    else -> "Geri sayım bitti."
+                }
+                NotificationHelper.showNotification(application.applicationContext, notificationTitle, notificationMessage)
             }
         }
     }
@@ -96,7 +170,7 @@ class PomodoroViewModel @Inject constructor(
 
     fun stopTimer() {
         timerJob?.cancel() // Zamanlayıcıyı tamamen durdur
-        _timeMillis.value = DEFAULT_WORK_TIME_MILLIS // Başlangıç süresine dön
+        _timeMillis.value = initialWorkTimeMillis // Ayarlanmış başlangıç çalışma süresine dön
         _pomodoroState.value = PomodoroState.STOPPED // Durumu STOPPED olarak güncelle
         _currentRound.value = 1 // Tur sayısını sıfırla
         isPaused = false // Duraklatma durumunu sıfırla
@@ -108,30 +182,45 @@ class PomodoroViewModel @Inject constructor(
         when (_pomodoroState.value) {
             PomodoroState.WORKING -> {
                 _currentRound.value++ // Tur sayısını artır
-                if (_currentRound.value % LONG_BREAK_INTERVAL == 0) {
+                // Long break interval'ı güncel ayardan al
+                if ((_currentRound.value - 1) % currentLongBreakInterval == 0 && _currentRound.value > 1) {
                     // Uzun mola zamanı
-                    _timeMillis.value = DEFAULT_LONG_BREAK_TIME_MILLIS
+                    _timeMillis.value = initialLongBreakTimeMillis
                     _pomodoroState.value = PomodoroState.LONG_BREAK
                 } else {
                     // Kısa mola zamanı
-                    _timeMillis.value = DEFAULT_SHORT_BREAK_TIME_MILLIS
+                    _timeMillis.value = initialShortBreakTimeMillis
                     _pomodoroState.value = PomodoroState.SHORT_BREAK
                 }
-                startCountdown(_timeMillis.value) // Yeni zamanlayıcıyı başlat
+                // Bir sonraki fazı otomatik başlat (eğer duraklatma veya durdurma yoksa)
+                startCountdown(_timeMillis.value)
             }
             PomodoroState.SHORT_BREAK, PomodoroState.LONG_BREAK -> {
                 // Mola bitti, çalışma moduna dön
-                _timeMillis.value = DEFAULT_WORK_TIME_MILLIS
+                _timeMillis.value = initialWorkTimeMillis
                 _pomodoroState.value = PomodoroState.WORKING
-                startCountdown(_timeMillis.value) // Yeni zamanlayıcıyı başlat
+                // Bir sonraki fazı otomatik başlat
+                startCountdown(_timeMillis.value)
             }
             PomodoroState.PAUSED, PomodoroState.STOPPED -> {
-                // Bu durumlar timerEnd'de normalde çağrılmaz, ama hata kontrolü için burada.
+                // Bu durumlar timerEnd'de normalde çağrılmaz (timerJob cancel edildiği için)
+                // Ama eğer çağrılırsa burada bir şey yapmaya gerek yok.
             }
         }
     }
 
+    // ViewModel temizlendiğinde çalışan coroutine'leri ve kaynakları serbest bırak.
+    override fun onCleared() {
+        super.onCleared()
+        timerJob?.cancel()
+        // SoundPlayer'ı temizlemek istersen burada stopSound() çağırabilirsin
+        // soundPlayer.stopSound() // Eğer kullanıyorsan
+    }
+
     // --- Sabitler ---
+    // Bu sabitler artık SettingsManager'dan alınacak, o yüzden burada tutulmalarına gerek yok
+    // Ancak, geri dönüş (stopTimer) veya varsayılan değerler için hala kullanılabilirler.
+    // Şimdilik silmiyorum ama gelecekte kaldırılabilirler.
     companion object {
         const val DEFAULT_WORK_TIME_MILLIS = 25 * 60 * 1000L // 25 dakika
         const val DEFAULT_SHORT_BREAK_TIME_MILLIS = 5 * 60 * 1000L // 5 dakika
