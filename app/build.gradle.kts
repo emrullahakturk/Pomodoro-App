@@ -60,37 +60,38 @@ dependencies {
     debugImplementation(libs.androidx.ui.test.manifest)
 
     // ViewModel ve LiveData için
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.0")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.0")
-    implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.8.0") // LiveData kullanmak istersen
+    implementation(libs.androidx.lifecycle.runtime.ktx.v280)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.lifecycle.livedata.ktx) // LiveData kullanmak istersen
 
+    implementation(libs.androidx.navigation.compose)
 // Kotlin Coroutines için
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0")
+    implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.kotlinx.coroutines.android)
 
 // Jetpack Compose için Temel Bileşenler
-    implementation(platform("androidx.compose:compose-bom:2024.06.00")) // En güncel BOM'u kullanıyoruz
-    implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.ui:ui-graphics")
-    implementation("androidx.compose.ui:ui-tooling-preview")
-    implementation("androidx.compose.material3:material3") // Material Design 3 bileşenleri
+    implementation(platform(libs.androidx.compose.bom)) // En güncel BOM'u kullanıyoruz
+    implementation(libs.ui)
+    implementation(libs.ui.graphics)
+    implementation(libs.ui.tooling.preview)
+    implementation(libs.material3) // Material Design 3 bileşenleri
 
 // Hilt için
-    implementation("com.google.dagger:hilt-android:2.51.1")
-    kapt("com.google.dagger:hilt-android-compiler:2.51.1") // Annotation Processor
-    kapt("androidx.hilt:hilt-compiler:1.2.0") // Hilt Compose entegrasyonu için (eğer kullanırsan)
+    implementation(libs.hilt.android)
+    kapt(libs.hilt.android.compiler) // Annotation Processor
+    kapt(libs.androidx.hilt.compiler) // Hilt Compose entegrasyonu için (eğer kullanırsan)
 
 // Aktivite için
-    implementation("androidx.activity:activity-compose:1.9.0")
+    implementation(libs.androidx.activity.compose)
 
 // Test bağımlılıkları (şimdilik bu kadar yeterli)
-    testImplementation("junit:junit:4.13.2")
-    androidTestImplementation("androidx.test.ext:junit:1.1.5")
-    androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
-    androidTestImplementation(platform("androidx.compose:compose-bom:2024.06.00"))
-    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
-    debugImplementation("androidx.compose.ui:ui-tooling")
-    debugImplementation("androidx.compose.ui:ui-test-manifest")
+    testImplementation(libs.junit)
+    androidTestImplementation(libs.androidx.junit.v115)
+    androidTestImplementation(libs.androidx.espresso.core.v351)
+    androidTestImplementation(platform(libs.androidx.compose.bom.v20240600))
+    androidTestImplementation(libs.ui.test.junit4)
+    debugImplementation(libs.ui.tooling)
+    debugImplementation(libs.ui.test.manifest)
 
 
 }
