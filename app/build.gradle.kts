@@ -80,6 +80,7 @@ dependencies {
     implementation(libs.hilt.android)
     kapt(libs.hilt.android.compiler) // Annotation Processor
     kapt(libs.androidx.hilt.compiler) // Hilt Compose entegrasyonu için (eğer kullanırsan)
+    implementation (libs.androidx.hilt.navigation.compose)
 
 // Aktivite için
     implementation(libs.androidx.activity.compose)
